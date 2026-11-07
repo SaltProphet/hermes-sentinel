@@ -1,5 +1,7 @@
 # Hermes Sentinel 0.1.0
 
+![Hermes Sentinel — Audit · Block · Truncate](assets/hermes-sentinel-start-card.png)
+
 Hermes Sentinel is a plugin that blocks repeated tool calls, filters tool results before they reach the model, and records execution events in a local SQLite ledger.
 
 ## Install
@@ -7,7 +9,7 @@ Hermes Sentinel is a plugin that blocks repeated tool calls, filters tool result
 Run these commands in a Hermes test profile. The install command uses the published commit verified on Windows.
 
 ```bash
-hermes plugins install https://github.com/SaltProphet/hermes-sentinel#release/hermes-sentinel --ref 693d321d09342c9849a3268297ec9a818782c176 --no-enable
+hermes plugins install https://github.com/SaltProphet/hermes-sentinel --ref v0.1.0 --no-enable
 hermes plugins enable hermes-sentinel
 hermes plugins doctor hermes-sentinel
 hermes sentinel status
