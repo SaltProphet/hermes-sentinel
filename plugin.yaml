@@ -1,0 +1,18 @@
+name: hermes-sentinel
+version: 0.1.0
+description: "Deterministic runtime circuit breaker, loop trap prevention, and execution truth auditor for Hermes Agent. Disclosure — registers pre_llm_call, pre_tool_call, post_tool_call, and transform_tool_result lifecycle hooks to block repetitive tool loops, truncate oversized tool outputs for context preservation, and scrub outbound credentials; persists local execution audit events to ~/.hermes/sentinel_audit.db (or $HERMES_SENTINEL_DB); performs zero external network requests and collects no telemetry."
+author: Justin Strange
+license: MIT
+entrypoint: hermes_sentinel:register
+provides_hooks:
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - transform_tool_result
+hooks:
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - transform_tool_result
+cli_commands:
+  - sentinel
