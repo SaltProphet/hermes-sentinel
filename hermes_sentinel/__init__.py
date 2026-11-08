@@ -1,14 +1,3 @@
-﻿"""
-Hermes Sentinel Root Package Entrypoint.
-Provides direct standalone execution and aliases hermes_sentinel for full compatibility.
-"""
-import sys
-import os
-
-_PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
-if _PLUGIN_DIR not in sys.path:
-    sys.path.insert(0, _PLUGIN_DIR)
-
 """
 Hermes Sentinel Plugin Entrypoint.
 Registers pre_llm_call, pre_tool_call, post_tool_call, transform_tool_result hooks and CLI commands.
@@ -22,23 +11,6 @@ from .audit import AuditLedger
 rules_engine = SentinelRulesEngine()
 audit_ledger = AuditLedger()
 
-def _extract_history_text(conversation_history: Any) -> str:
-    """Extracts text from conversation_history list of messages if provided."""
-    if not conversation_history or not isinstance(conversation_history, list):
-        return ""
-    parts: List[str] = []
-    for item in conversation_history:
-        if isinstance(item, dict):
-            content = item.get("content")
-            if isinstance(content, str):
-                parts.append(content)
-            elif isinstance(content, list):
-                for sub in content:
-                    if isinstance(sub, dict) and isinstance(sub.get("text"), str):
-                        parts.append(sub["text"])
-        elif isinstance(item, str):
-            parts.append(item)
-    return "\n".join(parts)
 
 def on_pre_llm_call(
     session_id: str = "default",
@@ -47,35 +19,27 @@ def on_pre_llm_call(
     messages: Any = None,
     **kwargs
 ) -> Optional[Dict[str, str]]:
-    """
-    Hook: pre_llm_call (Hermes v0.22.6+ / v0.23.0).
-    Scans outgoing user_message AND conversation_history for private credentials.
-    Blocks turn if unredacted high-risk secrets are found.
-    """
-    rules_engine.sync_epoch(audit_ledger.get_reset_epoch())
+    """Block credential-shaped strings in the new message; leave history untouched.
 
+    Hermes 0.22.6+ honors the pre_llm_call veto before inference.
+    """
     msg_text = str(user_message or "")
-    hist_source = conversation_history if conversation_history is not None else messages
-    hist_text = _extract_history_text(hist_source)
-    combined_payload = f"{msg_text}\n{hist_text}" if hist_text else msg_text
-
-    _, had_secret = rules_engine.scan_and_redact(combined_payload)
+    _, had_secret = rules_engine.scan_and_redact(msg_text)
     if had_secret:
         audit_ledger.record_event(
             session_id=session_id,
             event_type="pre_llm_call",
             action="BLOCKED",
-            reason="Blocked turn: detected raw secret/credential in outgoing prompt or history.",
+            reason="Blocked turn: detected credential-shaped text in the new user message.",
             details={
                 "user_message_length": len(msg_text),
-                "history_scanned": bool(hist_text),
+                "history_scanned": False,
             },
         )
         return {
             "action": "block",
-            "message": "[Sentinel] Outbound turn blocked: detected exposed credentials in prompt or conversation history.",
+            "message": "[Sentinel] Outbound turn blocked: detected exposed credentials in the new user message.",
         }
-
     return None
 
 def on_pre_tool_call(
@@ -232,17 +196,12 @@ def handle_sentinel_cli(args):
         print(audit_ledger.render_markdown_summary(limit=30))
         return 0
     elif subcmd == "clear":
-        try:
-            import os
-            if os.path.exists(audit_ledger.db_path):
-                os.remove(audit_ledger.db_path)
-            audit_ledger._init_db()
+        if audit_ledger.clear():
             rules_engine.call_history.clear()
             print("Sentinel audit database cleared.")
-        except Exception as e:
-            print(f"Error clearing database: {e}", file=sys.stderr)
-            return 1
-        return 0
+            return 0
+        print("Sentinel audit storage unavailable; database was not cleared.", file=sys.stderr)
+        return 1
     elif subcmd == "reset":
         new_epoch = audit_ledger.bump_reset_epoch()
         rules_engine.sync_epoch(new_epoch)
@@ -251,19 +210,21 @@ def handle_sentinel_cli(args):
             session_id="cli",
             event_type="cli_command",
             action="RESET",
-            reason=f"Loop counters reset across processes (epoch {new_epoch})",
+            reason=f"Loop counters reset (epoch {new_epoch})",
         )
-        print(f"Sentinel loop tripwires reset across all processes (epoch {new_epoch}).")
+        scope = "shared database" if audit_ledger.storage == "persistent" and new_epoch else "this process only"
+        print(f"Sentinel loop tripwires reset ({scope}; epoch {new_epoch}).")
         return 0
     else:
         events = audit_ledger.get_recent_events(limit=5)
-        print("Hermes Sentinel v0.1.0 Active")
+        print("Hermes Sentinel v0.1.1 Active")
         print(f"Database: {audit_ledger.db_path}")
+        print(f"Audit storage: {audit_ledger.storage}")
         print(f"Recent events logged: {len(events)}")
         print("\nCommands:")
         print("  hermes sentinel audit   - View execution audit log")
         print("  hermes sentinel clear   - Reset SQLite audit database")
-        print("  hermes sentinel reset   - Clear in-memory loop tripwires across processes")
+        print("  hermes sentinel reset   - Reset loop tripwires (shared when persistent storage works)")
         return 0
 
 def handle_sentinel_slash(arg1: Any = "", arg2: Any = "", **kwargs) -> str:
@@ -294,22 +255,20 @@ def handle_sentinel_slash(arg1: Any = "", arg2: Any = "", **kwargs) -> str:
             action="RESET",
             reason=f"Loop counters reset via /sentinel reset (epoch {new_epoch})",
         )
-        return f"Sentinel loop counters reset (epoch {new_epoch})."
+        scope = "shared database" if audit_ledger.storage == "persistent" and new_epoch else "this process only"
+        return f"Sentinel loop counters reset ({scope}; epoch {new_epoch})."
     if "clear" in tokens:
-        try:
-            import os
-            if os.path.exists(audit_ledger.db_path):
-                os.remove(audit_ledger.db_path)
-            audit_ledger._init_db()
+        if audit_ledger.clear():
             rules_engine.call_history.clear()
             return "Sentinel audit database cleared."
-        except Exception as e:
-            return f"Error clearing database: {e}"
+        return "Sentinel audit storage unavailable; database was not cleared."
 
     return audit_ledger.render_markdown_summary(limit=10)
 
 def register(ctx):
     """Hermes plugin entrypoint called once on startup."""
+    if hasattr(ctx, "on_unload"):
+        ctx.on_unload(audit_ledger.close)
     # Register lifecycle hooks
     ctx.register_hook("pre_llm_call", on_pre_llm_call)
     ctx.register_hook("pre_tool_call", on_pre_tool_call)
@@ -337,8 +296,3 @@ def register(ctx):
             ctx.register_command("sentinel", handle_sentinel_slash, "View or reset Hermes Sentinel (/sentinel [reset])")
         except Exception:
             pass
-
-
-# Register alias in sys.modules so import hermes_sentinel succeeds from root
-sys.modules['hermes_sentinel'] = sys.modules[__name__]
-

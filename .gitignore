@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Unit test / coverage / cache
+.pytest_cache/
+.coverage
+.mypy_cache/
+.ruff_cache/
+
+# Local SQLite audit databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Environments
+.env
+.venv/
+venv/

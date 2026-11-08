@@ -20,6 +20,7 @@ DEFAULT_MAX_OUTPUT_CHARS = 4000
 DEFAULT_MAX_OUTPUT_LINES = 100
 DEFAULT_LOOP_THRESHOLD = 3  # Block if identical tool + args called N times consecutively
 
+
 class SentinelRulesEngine:
     def __init__(
         self,
@@ -35,7 +36,7 @@ class SentinelRulesEngine:
         self.last_seen_epoch: int = 0
 
     def sync_epoch(self, db_epoch: int):
-        """Synchronizes in-memory call history with cross-process reset epoch."""
+        """Synchronize loop counters with the persistent reset epoch when available."""
         if db_epoch > self.last_seen_epoch:
             self.call_history.clear()
             self.last_seen_epoch = db_epoch

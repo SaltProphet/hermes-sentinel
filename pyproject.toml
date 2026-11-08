@@ -4,11 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-sentinel"
-version = "0.1.0"
+version = "0.1.1"
 description = "Deterministic runtime circuit breaker, loop trap prevention, and execution truth auditor for Hermes Agent."
 readme = "README.md"
+authors = [{ name = "Justin Strange" }]
+license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = []
 
-[tool.setuptools]
-packages = ["hermes_sentinel"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hermes_sentinel*"]
+
+[project.entry-points."hermes_agent.plugins"]
+sentinel = "hermes_sentinel:register"
+
+[tool.pytest.ini_options]
+testpaths = ["regression_tests"]
