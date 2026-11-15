@@ -162,3 +162,46 @@ class TurnRegressions(unittest.TestCase):
             sentinel.handle_sentinel_cli(["reset"])
             self.assertIsNone(sentinel.on_pre_tool_call(tool_name="terminal", args={}))
             self.assertEqual(sentinel.on_pre_llm_call(user_message="AKIAIOSFODNN7EXAMPLE")["action"], "block")
+
+
+class SecretFormatRegressions(unittest.TestCase):
+    """Bare and labelled forms of the newly recognized credential formats."""
+
+    def setUp(self):
+        self.ledger = AuditLedger(":memory:")
+        self.addCleanup(dispose, self.ledger)
+        self.patch_ledger = patch.object(sentinel, "audit_ledger", self.ledger)
+        self.patch_rules = patch.object(sentinel, "rules_engine", SentinelRulesEngine())
+        self.patch_ledger.start()
+        self.patch_rules.start()
+        self.addCleanup(self.patch_ledger.stop)
+        self.addCleanup(self.patch_rules.stop)
+
+    def assert_covered(self, key, marker):
+        cleaned = sentinel.on_transform_tool_result(tool_name="terminal", result=key)
+        self.assertNotIn(key, cleaned)
+        self.assertIn(marker, cleaned)
+
+        labelled = sentinel.on_transform_tool_result(tool_name="terminal", result="token=" + key)
+        self.assertNotIn(key, labelled)
+        self.assertIn("[REDACTED_", labelled)
+
+        self.assertEqual(sentinel.on_pre_llm_call(user_message=key)["action"], "block")
+
+    def test_anthropic_key(self):
+        self.assert_covered("sk-ant-" + "A" * 40, "[REDACTED_ANTHROPIC_KEY]")
+
+    def test_openai_project_key(self):
+        self.assert_covered("sk-proj-" + "B" * 40, "[REDACTED_OPENAI_KEY]")
+
+    def test_github_fine_grained_pat(self):
+        self.assert_covered("github_pat_" + "C" * 30, "[REDACTED_GITHUB_PAT]")
+
+    def test_slack_bot_token(self):
+        self.assert_covered("xoxb-" + "D" * 20, "[REDACTED_SLACK_TOKEN]")
+
+    def test_stripe_live_key(self):
+        self.assert_covered("sk_live_" + "E" * 24, "[REDACTED_STRIPE_KEY]")
+
+    def test_gitlab_pat(self):
+        self.assert_covered("glpat-" + "F" * 24, "[REDACTED_GITLAB_TOKEN]")

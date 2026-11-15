@@ -217,7 +217,7 @@ def handle_sentinel_cli(args):
         return 0
     else:
         events = audit_ledger.get_recent_events(limit=5)
-        print("Hermes Sentinel v0.1.1 Active")
+        print("Hermes Sentinel v0.1.2 Active")
         print(f"Database: {audit_ledger.db_path}")
         print(f"Audit storage: {audit_ledger.storage}")
         print(f"Recent events logged: {len(events)}")

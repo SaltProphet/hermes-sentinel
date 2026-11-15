@@ -1,4 +1,4 @@
-# Hermes Sentinel 0.1.1
+# Hermes Sentinel 0.1.2
 
 ![Hermes Sentinel — Audit · Block · Truncate](assets/hermes-sentinel-start-card.png)
 
@@ -26,6 +26,16 @@ and the host's `hermes_constants` API. No external network requests or telemetry
   bodies are not stored. Tool names, timestamps and redacted previews are still
   local usage data. Ordinary unchanged tool results do not create a separate
   transform event.
+
+## Recognized credential formats
+
+Tool results and new user messages are checked for bearer tokens, AWS access keys,
+PEM private keys, labelled secrets (`token=`, `api_key:`), and these provider
+formats: OpenAI (`sk-`, `sk-proj-`, `sk-svcacct-`, `sk-admin-`), Anthropic
+(`sk-ant-`), GitHub (`ghp_`, `github_pat_`), Slack (`xox[baprs]-`), Stripe
+(`sk_live_`, `rk_live_`), and GitLab (`glpat-`). Version 0.1.2 adds bare-key
+detection for the `sk-proj-`, `sk-ant-`, `github_pat_`, `xoxb-`, `sk_live_`, and
+`glpat-` formats that were previously caught only when labelled.
 
 ## Audit storage and failures
 
@@ -146,7 +156,7 @@ blocker, not a fabricated validation success.
 
 ## Proposed catalog YAML
 
-Version 0.1.1; the SHA remains a placeholder until an owner-approved commit
+Version 0.1.2; the SHA remains a placeholder until an owner-approved commit
 exists. This example is not install-ready.
 
 ```yaml
@@ -165,7 +175,7 @@ description: >-
   storage or skipped auditing on failure; performs no external network
   requests or telemetry.
 requires_hermes: ">=0.22.6"
-version: "0.1.1"
+version: "0.1.2"
 capabilities:
   provides_tools: []
   provides_hooks:

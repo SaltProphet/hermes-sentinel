@@ -8,6 +8,12 @@ from typing import Dict, Any, List, Optional, Tuple
 # Patterns for secret scanning
 SECRET_PATTERNS = [
     (re.compile(r"(?i)bearer\s+[a-zA-Z0-9_\-\.]{20,}"), "[REDACTED_BEARER_TOKEN]"),
+    (re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}"), "[REDACTED_ANTHROPIC_KEY]"),
+    (re.compile(r"sk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{20,}"), "[REDACTED_OPENAI_KEY]"),
+    (re.compile(r"github_pat_[A-Za-z0-9_]{22,}"), "[REDACTED_GITHUB_PAT]"),
+    (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}"), "[REDACTED_SLACK_TOKEN]"),
+    (re.compile(r"(?:sk|rk)_live_[A-Za-z0-9]{16,}"), "[REDACTED_STRIPE_KEY]"),
+    (re.compile(r"glpat-[A-Za-z0-9_\-]{20,}"), "[REDACTED_GITLAB_TOKEN]"),
     (re.compile(r"sk-[a-zA-Z0-9]{32,}"), "[REDACTED_OPENAI_KEY]"),
     (re.compile(r"ghp_[a-zA-Z0-9]{36}"), "[REDACTED_GITHUB_PAT]"),
     (re.compile(r"(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}"), "[REDACTED_AWS_KEY]"),

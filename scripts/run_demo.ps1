@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Run the deterministic Sentinel 0.1.1 demo; Python owns its disposable profile.
+    Run the deterministic Sentinel 0.1.2 demo; Python owns its disposable profile.
 #>
 [CmdletBinding()]
 param(
