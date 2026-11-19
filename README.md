@@ -181,13 +181,12 @@ blocker, not a fabricated validation success.
 
 ## Proposed catalog YAML
 
-Version 0.1.3; the SHA remains a placeholder until an owner-approved commit
-exists. This example is not install-ready.
+Version 0.1.3; catalog pinned to the approved plugin commit below.
 
 ```yaml
 name: hermes-sentinel
 repo: https://github.com/SaltProphet/hermes-sentinel
-sha: "<approved-plugin-commit-sha>"
+sha: "03b56835c20d234300fd6b82334cd005a71d4a0a"
 maintainer: Justin Strange
 tier: community
 category: tools
