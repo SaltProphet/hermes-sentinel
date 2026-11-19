@@ -1,5 +1,5 @@
 name: hermes-sentinel
-version: "0.1.2"
+version: "0.1.3"
 requires_hermes: ">=0.22.6"
 description: >-
   Deterministic runtime circuit breaker and local execution auditor.

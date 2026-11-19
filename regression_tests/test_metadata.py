@@ -18,7 +18,7 @@ class MetadataTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         catalog = yaml.safe_load(re.search(r"```yaml\n(.*?)```", readme, re.S).group(1))
-        self.assertEqual(manifest["version"], "0.1.2")
+        self.assertEqual(manifest["version"], "0.1.3")
         self.assertEqual(project["version"], manifest["version"])
         self.assertEqual(catalog["version"], manifest["version"])
         self.assertEqual(manifest["requires_hermes"], ">=0.22.6")
@@ -45,4 +45,5 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(len(context.unload), 1)
         with redirect_stdout(io.StringIO()) as output:
             self.assertEqual(sentinel.handle_sentinel_cli(["status"]), 0)
-        self.assertIn("v0.1.2", output.getvalue())
+        self.assertIn("v0.1.3", output.getvalue())
+        self.assertIn("polling/status budget", output.getvalue())

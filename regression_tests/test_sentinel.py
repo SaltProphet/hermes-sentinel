@@ -1,5 +1,6 @@
 """Hook, loop, redaction, truncation, CLI and directory-loader contracts."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import io
 import os
@@ -64,6 +65,125 @@ class TestHermesSentinel(unittest.TestCase):
         self.assertIsNone(self.rules.check_loop("other", "read_file", {"b": 2}))
         self.rules.record_call("session", "other_tool", {})
         self.assertIsNone(self.rules.check_loop("session", "read_file", {"b": 2, "a": {"y": 1, "x": 2}}))
+
+    def test_loop_guard_allows_repeat_while_result_changes(self):
+        args = {"path": "report.txt"}
+        for result in ("version 1", "version 2"):
+            self.assertIsNone(self.rules.check_loop("session", "read_file", args))
+            self.rules.record_call("session", "read_file", args)
+            self.rules.record_result("session", "read_file", args, result)
+        # The previous two results differ, so the third call is progress, not a loop.
+        self.assertIsNone(self.rules.check_loop("session", "read_file", args))
+
+    def test_loop_guard_blocks_repeat_with_identical_results(self):
+        args = {"path": "report.txt"}
+        for _ in range(2):
+            self.assertIsNone(self.rules.check_loop("session", "read_file", args))
+            self.rules.record_call("session", "read_file", args)
+            self.rules.record_result("session", "read_file", args, "same output")
+        self.assertIn("Sentinel Loop Trap", self.rules.check_loop("session", "read_file", args))
+
+    def test_loop_history_stores_result_digest_not_body(self):
+        self.rules.record_call("session", "read_file", {"path": "report.txt"})
+        self.rules.record_result("session", "read_file", {"path": "report.txt"}, "sensitive result body")
+        self.assertNotIn("sensitive result body", str(self.rules.call_history))
+
+    def test_polling_call_gets_larger_budget(self):
+        args = {"cmd": "kubectl rollout status deployment/api"}
+        for _ in range(7):
+            self.assertIsNone(self.rules.check_loop("session", "terminal", args))
+            self.rules.record_call("session", "terminal", args)
+            self.rules.record_result("session", "terminal", args, "pending")
+        self.assertIn("invoked 8 consecutive", self.rules.check_loop("session", "terminal", args))
+
+    def test_polling_call_is_allowed_while_status_changes(self):
+        args = {"cmd": "kubectl rollout status deployment/api"}
+        for step in range(12):
+            self.assertIsNone(self.rules.check_loop("session", "terminal", args))
+            self.rules.record_call("session", "terminal", args)
+            self.rules.record_result("session", "terminal", args, f"step {step}")
+
+    def test_hard_repeat_cap_stops_volatile_output_loop(self):
+        args = {"path": "report.txt"}
+        for step in range(29):
+            self.assertIsNone(self.rules.check_loop("session", "read_file", args))
+            self.rules.record_call("session", "read_file", args)
+            self.rules.record_result("session", "read_file", args, f"volatile output {step}")
+        self.assertIn("hard repeat cap", self.rules.check_loop("session", "read_file", args))
+
+    def test_empty_tool_call_id_is_treated_as_missing(self):
+        args = {"path": "report.txt"}
+        self.rules.record_call("session", "read_file", args, tool_call_id="")
+        self.rules.record_result("session", "read_file", args, "first", tool_call_id="real-id")
+        entry = self.rules.call_history["session"][0]
+        self.assertIsNotNone(entry[3])
+        self.assertEqual(entry[4], "real-id")
+
+    def test_transform_overwrite_does_not_touch_older_history(self):
+        args = {"path": "report.txt"}
+        self.rules.record_call("session", "read_file", args)
+        self.rules.record_result("session", "read_file", args, "original")
+        original_digest = self.rules.call_history["session"][0][3]
+        self.rules.record_call("session", "other_tool", {})
+        self.rules.record_result("session", "other_tool", {}, "other")
+        self.rules.record_result("session", "read_file", args, "new", overwrite=True)
+        self.assertEqual(self.rules.call_history["session"][0][3], original_digest)
+
+    def test_concurrent_history_updates_do_not_raise(self):
+        def worker(worker_id):
+            args = {"path": f"report-{worker_id}.txt"}
+            for step in range(60):
+                self.rules.check_loop("session", "read_file", args)
+                self.rules.record_call(
+                    "session", "read_file", args, tool_call_id=f"call-{worker_id}-{step}"
+                )
+                self.rules.record_result(
+                    "session", "read_file", args, f"output {step}",
+                    tool_call_id=f"call-{worker_id}-{step}", overwrite=True,
+                )
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for future in [pool.submit(worker, index) for index in range(8)]:
+                future.result()
+        self.assertLessEqual(
+            len(self.rules.call_history["session"]), self.rules._history_limit
+        )
+
+    def test_threshold_environment_overrides(self):
+        with patch.dict(os.environ, {
+            "HERMES_SENTINEL_LOOP_THRESHOLD": "4",
+            "HERMES_SENTINEL_POLL_THRESHOLD": "12",
+            "HERMES_SENTINEL_REPEAT_CAP": "40",
+        }):
+            engine = sentinel._build_rules_engine()
+        self.assertEqual(engine.loop_threshold, 4)
+        self.assertEqual(engine.poll_threshold, 12)
+        self.assertEqual(engine.max_repeat_threshold, 40)
+        with patch.dict(os.environ, {"HERMES_SENTINEL_POLL_THRESHOLD": "not-a-number"}):
+            self.assertEqual(sentinel._env_int("HERMES_SENTINEL_POLL_THRESHOLD", 8), 8)
+
+    def test_transform_returns_sanitized_output_when_bookkeeping_fails(self):
+        synthetic = "sk-" + "0" * 32
+        raw = "token: " + synthetic + "\n" + "\n".join(f"log line {i}" for i in range(150))
+        with patch.object(self.rules, "record_result", side_effect=RuntimeError("bookkeeping failed")):
+            output = sentinel.on_transform_tool_result(tool_name="terminal", result=raw)
+        self.assertNotIn(synthetic, output)
+        self.assertIn("[REDACTED_OPENAI_KEY]", output)
+        self.assertLessEqual(len(output), 4000)
+        self.assertLessEqual(len(output.splitlines()), 100)
+
+    def test_hooks_feed_results_into_loop_guard(self):
+        changing = {"tool_name": "read_file", "args": {"path": "report.txt"}, "session_id": "agent"}
+        for result in ("version 1", "version 2"):
+            self.assertIsNone(sentinel.on_pre_tool_call(**changing))
+            sentinel.on_post_tool_call(**changing, result=result)
+        self.assertIsNone(sentinel.on_pre_tool_call(**changing))
+
+        stuck = {"tool_name": "read_file", "args": {"path": "stuck.txt"}, "session_id": "agent"}
+        for _ in range(2):
+            self.assertIsNone(sentinel.on_pre_tool_call(**stuck))
+            sentinel.on_post_tool_call(**stuck, result="same error")
+        self.assertEqual(sentinel.on_pre_tool_call(**stuck)["action"], "block")
 
     def test_cross_process_cli_reset_epoch(self):
         call = {"tool_name": "terminal", "args": {"cmd": "echo 1"}, "session_id": "agent"}

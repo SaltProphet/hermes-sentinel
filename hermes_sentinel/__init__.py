@@ -2,13 +2,39 @@
 Hermes Sentinel Plugin Entrypoint.
 Registers pre_llm_call, pre_tool_call, post_tool_call, transform_tool_result hooks and CLI commands.
 """
+import os
 import sys
 from typing import Any, Dict, List, Optional
-from .rules import SentinelRulesEngine
+from .rules import (
+    DEFAULT_LOOP_THRESHOLD,
+    DEFAULT_MAX_REPEAT_THRESHOLD,
+    DEFAULT_POLL_THRESHOLD,
+    SentinelRulesEngine,
+)
 from .audit import AuditLedger
 
+
+def _env_int(name: str, default: int) -> int:
+    """Read a positive integer override, falling back to the default."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_rules_engine() -> SentinelRulesEngine:
+    return SentinelRulesEngine(
+        loop_threshold=_env_int("HERMES_SENTINEL_LOOP_THRESHOLD", DEFAULT_LOOP_THRESHOLD),
+        poll_threshold=_env_int("HERMES_SENTINEL_POLL_THRESHOLD", DEFAULT_POLL_THRESHOLD),
+        max_repeat_threshold=_env_int("HERMES_SENTINEL_REPEAT_CAP", DEFAULT_MAX_REPEAT_THRESHOLD),
+    )
+
+
 # Singletons for plugin lifecycle
-rules_engine = SentinelRulesEngine()
+rules_engine = _build_rules_engine()
 audit_ledger = AuditLedger()
 
 
@@ -75,7 +101,13 @@ def on_pre_tool_call(
         return {"action": "block", "message": f"[Sentinel] Execution halted: {loop_error}"}
 
     # Record dispatch attempt
-    rules_engine.record_call(session_id, tool_name, actual_args, status="dispatched")
+    rules_engine.record_call(
+        session_id,
+        tool_name,
+        actual_args,
+        status="dispatched",
+        tool_call_id=kwargs.get("tool_call_id") or None,
+    )
     audit_ledger.record_event(
         session_id=session_id,
         event_type="pre_tool_call",
@@ -126,6 +158,25 @@ def on_transform_tool_result(
             details={"truncated": was_truncated, "redacted": had_secret},
         )
 
+    # Record the digest of the result the model will actually see. This runs
+    # after post_tool_call, so it replaces the raw-result digest for the same
+    # call and keeps loop detection aligned with observable progress. It is
+    # best-effort: loop bookkeeping must never prevent the sanitized result
+    # from being returned.
+    actual_args = args if args is not None else tool_args
+    try:
+        rules_engine.record_result(
+            session_id,
+            tool_name,
+            actual_args,
+            final_output,
+            status="completed",
+            tool_call_id=kwargs.get("tool_call_id") or None,
+            overwrite=True,
+        )
+    except Exception:
+        pass
+
     return final_output
 
 def on_post_tool_call(
@@ -150,6 +201,19 @@ def on_post_tool_call(
         is_error = True
     elif result_str.lstrip().startswith(("Error:", "Traceback", "[ERROR]")):
         is_error = True
+
+    actual_args = args if args is not None else tool_args
+    try:
+        rules_engine.record_result(
+            session_id,
+            tool_name,
+            actual_args,
+            result_str,
+            status="error" if is_error else "completed",
+            tool_call_id=kwargs.get("tool_call_id") or None,
+        )
+    except Exception:
+        pass
 
     action = "ERROR_OBSERVED" if is_error else "COMPLETED"
     details: Dict[str, Any] = {
@@ -217,9 +281,12 @@ def handle_sentinel_cli(args):
         return 0
     else:
         events = audit_ledger.get_recent_events(limit=5)
-        print("Hermes Sentinel v0.1.2 Active")
+        print("Hermes Sentinel v0.1.3 Active")
         print(f"Database: {audit_ledger.db_path}")
         print(f"Audit storage: {audit_ledger.storage}")
+        print(f"Loop guard: block after {rules_engine.loop_threshold} identical results; "
+              f"polling/status budget: {rules_engine.poll_threshold}; "
+              f"hard repeat cap: {rules_engine.max_repeat_threshold}")
         print(f"Recent events logged: {len(events)}")
         print("\nCommands:")
         print("  hermes sentinel audit   - View execution audit log")

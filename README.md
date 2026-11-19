@@ -1,4 +1,4 @@
-# Hermes Sentinel 0.1.2
+# Hermes Sentinel 0.1.3
 
 ![Hermes Sentinel — Audit · Block · Truncate](assets/hermes-sentinel-start-card.png)
 
@@ -8,9 +8,18 @@ and the host's `hermes_constants` API. No external network requests or telemetry
 
 ## Behavior and disclosure
 
-- **Loop guard (`pre_tool_call`):** blocks the third consecutive identical tool
-  call with identical arguments, tracked per session. It records dispatch
-  attempts, not proof that an OS command executed.
+- **Loop guard (`pre_tool_call`):** blocks a repeated identical tool call when
+  the observed results are also identical, or when no completion result was
+  recorded. Repeated calls whose result changed are treated as progress, so a
+  deliberate poll (for example, waiting for a deployment to finish) is allowed.
+  Polling/status calls — tool name or arguments containing a delimited keyword
+  such as `status`, `check`, `poll`, `wait`, `deploy`, `deployment`, `rollout`,
+  `health`, `ready`, `progress`, `watch`, or `describe` — get a larger budget of
+  8 identical results before blocking by default. Any call repeated 30 times
+  with identical arguments is blocked even if its output keeps changing. Only a
+  SHA-256 digest of each result is kept in memory for this comparison. All
+  counters are tracked per session. The guard records dispatch attempts, not
+  proof that an OS command executed.
 - **Tool results (`transform_tool_result`):** replaces recognized credential
   patterns with redaction markers and truncates output to at most 4,000
   characters and 100 lines **before the model sees it**. The model therefore
@@ -27,15 +36,31 @@ and the host's `hermes_constants` API. No external network requests or telemetry
   local usage data. Ordinary unchanged tool results do not create a separate
   transform event.
 
+## Loop guard thresholds
+
+Defaults are 3 identical results for ordinary calls, 8 for polling/status
+calls, and a hard cap of 30 consecutive identical-argument calls even when the
+result changes. Override them with positive integers in the environment:
+
+```text
+HERMES_SENTINEL_LOOP_THRESHOLD
+HERMES_SENTINEL_POLL_THRESHOLD
+HERMES_SENTINEL_REPEAT_CAP
+```
+
+Invalid or missing values fall back to the defaults. These variables change
+only the in-memory guard budgets; they are not stored in the audit database.
+
 ## Recognized credential formats
 
 Tool results and new user messages are checked for bearer tokens, AWS access keys,
 PEM private keys, labelled secrets (`token=`, `api_key:`), and these provider
 formats: OpenAI (`sk-`, `sk-proj-`, `sk-svcacct-`, `sk-admin-`), Anthropic
 (`sk-ant-`), GitHub (`ghp_`, `github_pat_`), Slack (`xox[baprs]-`), Stripe
-(`sk_live_`, `rk_live_`), and GitLab (`glpat-`). Version 0.1.2 adds bare-key
+(`sk_live_`, `rk_live_`), and GitLab (`glpat-`). Version 0.1.2 added bare-key
 detection for the `sk-proj-`, `sk-ant-`, `github_pat_`, `xoxb-`, `sk_live_`, and
-`glpat-` formats that were previously caught only when labelled.
+`glpat-` formats that were previously caught only when labelled. Version 0.1.3
+adds result-aware loop detection and the larger polling/status budget.
 
 ## Audit storage and failures
 
@@ -156,7 +181,7 @@ blocker, not a fabricated validation success.
 
 ## Proposed catalog YAML
 
-Version 0.1.2; the SHA remains a placeholder until an owner-approved commit
+Version 0.1.3; the SHA remains a placeholder until an owner-approved commit
 exists. This example is not install-ready.
 
 ```yaml
@@ -169,13 +194,16 @@ category: tools
 description: >-
   Deterministic runtime circuit breaker and local execution auditor.
   Disclosure: blocks credential-shaped strings in new user messages and
-  repetitive tool calls; redacts and truncates tool results before the model
-  sees them; stores audit events under the active Hermes home's
+  repetitive tool calls whose results do not change; allows result-changing
+  polling with a larger budget for status/check/poll/wait/deploy-style calls,
+  with a hard repeat cap even when results change; redacts and truncates tool
+  results before the model sees them; stores audit
+  events under the active Hermes home's
   plugin-data/hermes-sentinel/sentinel_audit.db, falling back to memory-only
   storage or skipped auditing on failure; performs no external network
   requests or telemetry.
 requires_hermes: ">=0.22.6"
-version: "0.1.2"
+version: "0.1.3"
 capabilities:
   provides_tools: []
   provides_hooks:
