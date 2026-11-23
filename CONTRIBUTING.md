@@ -38,6 +38,31 @@ reload; unloading one profile does not close another's ledger.
 The audit path must come from `hermes_constants.get_hermes_home()`. Do not read
 `HERMES_HOME` directly and do not add a database-path override.
 
+## Guard budgets
+
+Positive integers read at startup; invalid values fall back to the defaults.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HERMES_SENTINEL_LOOP_THRESHOLD` | 3 | identical results before an ordinary call is blocked |
+| `HERMES_SENTINEL_POLL_THRESHOLD` | 8 | same, for polling/status calls |
+| `HERMES_SENTINEL_REPEAT_CAP` | 30 | identical-argument calls blocked even when results change |
+
+The polling set is `status`, `check`, `poll`, `wait`, `deploy`, `deployment`,
+`rollout`, `health`, `ready`, `progress`, `watch`, `describe`, matched as a
+delimited word in the tool name or its arguments. Counters are per session and
+held in memory; only a SHA-256 digest of each result is retained.
+
+## Storage
+
+The ledger is `<hermes home>/plugin-data/hermes-sentinel/sentinel_audit.db`. If
+it cannot be opened, auditing falls back to memory for that process, and to
+disabled if that also fails; the guards keep working.
+
+`reset` clears this process immediately and other processes on their next tool
+call. `clear` deletes rows transactionally without unlinking the file. In
+memory-only or disabled mode, reset applies to this process alone.
+
 ## Redaction ordering
 
 `scan_and_redact()` applies `SECRET_PATTERNS` in list order, so order is
