@@ -46,10 +46,6 @@ do the same as above.
 
 Hermes Agent 0.22.6 or newer.
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
