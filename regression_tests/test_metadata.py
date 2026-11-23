@@ -47,3 +47,14 @@ class MetadataTests(unittest.TestCase):
             self.assertEqual(sentinel.handle_sentinel_cli(["status"]), 0)
         self.assertIn("v0.1.3", output.getvalue())
         self.assertIn("polling/status budget", output.getvalue())
+
+    def test_catalog_example_carries_no_pin(self):
+        """The catalogue entry owns the SHA; a README pin is stale by construction."""
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        block = re.search(r"```yaml\n(.*?)```", readme, re.S).group(1)
+        catalog = yaml.safe_load(block)
+        self.assertNotIn("sha", catalog)
+        self.assertIsNone(
+            re.search(r"\b[0-9a-f]{40}\b", block),
+            "the catalogue example must not name a commit: the entry is the only place a release SHA is written",
+        )

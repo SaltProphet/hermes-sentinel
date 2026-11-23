@@ -173,20 +173,22 @@ Before an approved release, stop on any nonzero exit or missing result:
 5. Confirm all four hooks, zero tools, matching parsed metadata, no candidate
    bytecode, and no bytecode in the proposed Git index/tree.
 6. Review the complete diff and obtain owner approval before applying to clones
-   or committing. Replace the catalog placeholder with the actual approved
-   plugin commit, revalidate the pinned tree, and obtain explicit push approval.
+   or committing. Then open the catalogue PR that pins that commit, and
+   revalidate the pinned tree there.
 
-These steps never authorize an automatic push. A placeholder pin is a release
-blocker, not a fabricated validation success.
+These steps never authorize an automatic push. The pinned commit is what the
+catalogue entry names, so the pin is set in the entry, not guessed here.
 
-## Proposed catalog YAML
+## Catalog entry fields
 
-Version 0.1.3; catalog pinned to the approved plugin commit below.
+Version 0.1.3. The fields below are what `plugin-catalog/hermes-sentinel.yaml`
+carries, minus `sha`. That key is written only in the catalogue entry, by the PR
+that pins the release commit: a commit cannot name its own hash, so a SHA copied
+into this README is stale the moment it is committed.
 
 ```yaml
 name: hermes-sentinel
 repo: https://github.com/SaltProphet/hermes-sentinel
-sha: "03b56835c20d234300fd6b82334cd005a71d4a0a"
 maintainer: Justin Strange
 tier: community
 category: tools

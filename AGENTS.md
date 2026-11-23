@@ -38,6 +38,6 @@ Build test and demo fixtures by concatenation (`"sk-ant-" + "A" * 40`). `test_ad
 ## Versioning and release
 
 - Keep the version identical in `plugin.yaml`, `pyproject.toml`, `README.md` (heading, prose, catalog YAML), `hermes_sentinel/__init__.py`, `scripts/run_demo.py`, `scripts/run_demo.ps1`, and the hard-coded assertions in `regression_tests/test_metadata.py`. `test_metadata` compares the parsed manifest, project, catalog, and CLI output.
-- Release gate: README "Tests and local release gate". Validate and doctor in an isolated Hermes home, run the demo and PowerShell wrapper, confirm metadata and no bytecode, review the full diff, and get owner approval. Never push automatically; a placeholder catalog SHA blocks release.
+- Release gate: README "Tests and local release gate". Validate and doctor in an isolated Hermes home, run the demo and PowerShell wrapper, confirm metadata and no bytecode, review the full diff, and get owner approval. Never push automatically; the release SHA is written only in the catalogue entry, never in this README.
 - `release/` is git-ignored scratch output. Edit the source tree, not `release/hermes-sentinel/`.
 - Commit style from history: `fix: ... - vX.Y.Z`. Do release work on a dedicated branch until approved.
