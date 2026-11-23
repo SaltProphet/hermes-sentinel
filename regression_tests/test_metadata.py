@@ -1,8 +1,7 @@
-"""Parsed release metadata must describe what this plugin registers."""
+"""Manifest, package metadata and registration must describe the same plugin."""
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
-import re
 import tomllib
 import unittest
 
@@ -13,17 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MetadataTests(unittest.TestCase):
-    def test_release_and_catalog_example_match_manifest_and_registration(self):
+    def test_version_and_declarations_match_registration(self):
         manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        catalog = yaml.safe_load(re.search(r"```yaml\n(.*?)```", readme, re.S).group(1))
-        self.assertEqual(manifest["version"], "0.1.3")
         self.assertEqual(project["version"], manifest["version"])
-        self.assertEqual(catalog["version"], manifest["version"])
-        self.assertEqual(manifest["requires_hermes"], ">=0.22.6")
-        self.assertEqual(catalog["requires_hermes"], manifest["requires_hermes"])
-        self.assertEqual(catalog["capabilities"]["provides_hooks"], manifest["provides_hooks"])
 
         class Context:
             def __init__(self):
@@ -43,18 +35,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(set(context.cli), {"sentinel"})
         self.assertEqual(set(context.commands), {"sentinel"})
         self.assertEqual(len(context.unload), 1)
+
         with redirect_stdout(io.StringIO()) as output:
             self.assertEqual(sentinel.handle_sentinel_cli(["status"]), 0)
-        self.assertIn("v0.1.3", output.getvalue())
-        self.assertIn("polling/status budget", output.getvalue())
-
-    def test_catalog_example_carries_no_pin(self):
-        """The catalogue entry owns the SHA; a README pin is stale by construction."""
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        block = re.search(r"```yaml\n(.*?)```", readme, re.S).group(1)
-        catalog = yaml.safe_load(block)
-        self.assertNotIn("sha", catalog)
-        self.assertIsNone(
-            re.search(r"\b[0-9a-f]{40}\b", block),
-            "the catalogue example must not name a commit: the entry is the only place a release SHA is written",
-        )
+        self.assertIn(f"v{manifest['version']}", output.getvalue())

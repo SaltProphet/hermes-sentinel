@@ -1,43 +1,29 @@
 # AGENTS.md
 
-Hermes Agent plugin providing deterministic secret redaction, a loop guard, bounded tool output, and a local audit ledger. Runtime code is standard library only plus the host's `hermes_constants`; no network requests or telemetry.
+Hermes Agent plugin: deterministic secret redaction, a loop guard, bounded tool
+output, and a local audit ledger. Runtime code is standard library plus the
+host's `hermes_constants`. No network, no telemetry, no subprocesses.
+
+Setup, test commands, the release gate, and the demo internals live in
+[CONTRIBUTING.md](CONTRIBUTING.md). This file is only what you must not get wrong.
 
 ## Layout
 
-- Root `__init__.py` is a directory-loader wrapper. Implementation lives only in `hermes_sentinel/`.
-- `hermes_sentinel/__init__.py` owns the four hooks (`pre_llm_call`, `pre_tool_call`, `post_tool_call`, `transform_tool_result`), the CLI/slash handlers, and registration.
-- `hermes_sentinel/rules.py` owns `SECRET_PATTERNS`, loop detection, and truncation. `hermes_sentinel/audit.py` owns the SQLite ledger.
-- Audit path: `<Hermes home>/plugin-data/hermes-sentinel/sentinel_audit.db`, resolved through `hermes_constants.get_hermes_home()`. Do not read `HERMES_HOME` directly or add a `HERMES_SENTINEL_DB` override.
-- `requires_hermes >=0.22.6`: earlier releases do not honor the `pre_llm_call` block return.
+- Root `__init__.py` is the directory-loader wrapper. Implementation lives only in `hermes_sentinel/`.
+- `hermes_sentinel/__init__.py` owns the four hooks, the CLI/slash handlers, and registration.
+- `hermes_sentinel/rules.py` owns `SECRET_PATTERNS`, loop detection, and truncation.
+- `hermes_sentinel/audit.py` owns the SQLite ledger.
 
-## Tests
+## Invariants
 
-The suite imports host modules (`hermes_constants`, `hermes_yaml`, `hermes_cli.plugins`, `tools.plugin_guard`), so a bare `python` fails unless the Hermes source checkout is on `PYTHONPATH` (on this machine: `C:\Users\Shadow\hermes-agent`) or you use the Hermes-managed interpreter.
+- Audit path comes from `hermes_constants.get_hermes_home()`: `<home>/plugin-data/hermes-sentinel/sentinel_audit.db`. Never read `HERMES_HOME` directly; never add a database-path override.
+- `requires_hermes >=0.22.6`: earlier releases ignore the `pre_llm_call` block return.
+- `scan_and_redact()` applies `SECRET_PATTERNS` in order. Specific prefixes go above the generic `sk-` rule; the labelled `token=` / `api_key:` catch-all stays last.
+- The version is written in `plugin.yaml`, `pyproject.toml`, the `status` line in `hermes_sentinel/__init__.py`, and both demo scripts. Not in the README.
+- No file in this repo carries the release SHA. The catalogue entry is the only place it is written.
+- Test fixtures for credentials are built by concatenation; `test_admission` runs Hermes's `tools.plugin_guard` against committed literals.
 
-Full suite from the repo root:
+## Commits
 
-```powershell
-$env:PYTHONPATH = 'C:\Users\Shadow\hermes-agent'
-$env:HERMES_HOME = Join-Path $env:TEMP 'sentinel-test-home'
-python -B -m unittest discover -s regression_tests -v
-```
-
-Use an isolated `HERMES_HOME` so tests do not touch the real profile's audit database. Keep `-B`; compiled bytecode must not enter the tree.
-
-- Single test: `python -B -m unittest regression_tests.test_regressions.TurnRegressions.<test_name> -v`
-- Tests are `unittest`, despite `[tool.pytest.ini_options]` in `pyproject.toml`.
-- `test_demo` runs the real demo; the PowerShell wrapper test runs only on Windows.
-- Demo: `python -B scripts/run_demo.py` (or `scripts/run_demo.ps1`). It makes no model calls and owns a disposable home.
-
-## Redaction ordering
-
-`scan_and_redact()` applies `SECRET_PATTERNS` sequentially, so list order is behavior. Put specific prefixed formats above the generic `sk-` rule and the labelled `token=`/`api_key:` catch-all, which must stay last. The generic `sk-[A-Za-z0-9]{32,}` rule stops at the hyphen in `sk-proj-`/`sk-ant-`, so those prefixes need dedicated patterns.
-
-Build test and demo fixtures by concatenation (`"sk-ant-" + "A" * 40`). `test_admission` runs Hermes `tools.plugin_guard`, which flags credential-shaped literals committed to the repo.
-
-## Versioning and release
-
-- Keep the version identical in `plugin.yaml`, `pyproject.toml`, `README.md` (heading, prose, catalog YAML), `hermes_sentinel/__init__.py`, `scripts/run_demo.py`, `scripts/run_demo.ps1`, and the hard-coded assertions in `regression_tests/test_metadata.py`. `test_metadata` compares the parsed manifest, project, catalog, and CLI output.
-- Release gate: README "Tests and local release gate". Validate and doctor in an isolated Hermes home, run the demo and PowerShell wrapper, confirm metadata and no bytecode, review the full diff, and get owner approval. Never push automatically; the release SHA is written only in the catalogue entry, never in this README.
-- `release/` is git-ignored scratch output. Edit the source tree, not `release/hermes-sentinel/`.
-- Commit style from history: `fix: ... - vX.Y.Z`. Do release work on a dedicated branch until approved.
+`fix: ... - vX.Y.Z` or `docs: ... - vX.Y.Z`, matching history. Do release work
+on a dedicated branch. Never push without explicit approval.
