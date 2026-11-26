@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic Sentinel 0.1.3 demo in one disposable home, without user config."""
+"""Deterministic Sentinel 0.1.4 demo in one disposable home, without user config."""
 import os
 from pathlib import Path
 import shutil
